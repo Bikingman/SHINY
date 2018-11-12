@@ -70,7 +70,7 @@ ui <- fluidPage(
       ),
         fluidRow(
           column(12,
-                 img(src = "spots.png", height = 100, width = 100, position = "bottom"),
+                 img(src = "bike_wheel.png", height = 50 width = 50 position = "bottom"),
                  p("This tool was developed by Daniel Patterson, more of his work can be found on", a(href = "http://www.urbandatacyclist.com", "his webpage."),
                    p("Thanks for checking in!")
                  )
