@@ -5,8 +5,6 @@ library(tmap)
 library(data.table)
 tmap_mode("view")
 
-setwd("C:\\Users\\Daniel I. Patterson\\Desktop\\Shiney\\shiny_bike_share_app\\data")
-
 # Define UI ----
 ui <- fluidPage(
   
@@ -139,7 +137,7 @@ server <- function(input, output) {
   
   
   output$Statement2 <- renderText({
-    paste("Here's the plan!")
+    paste("This tool is designed to create a new bike distribution plan into an alraedy establihsed bike share system. The most popular stations are identified and new bikes are assigned based on each station's realtive popularity. In other words, the most popular station is assigned the most bikes, fewer bikes to the second most popular station, and so on. The assignment acocunts for morning or evening popularity as bike share users tent to have differences in usage patters in the morning and evening.")
   })
   
 
