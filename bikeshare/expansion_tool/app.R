@@ -42,7 +42,7 @@ ui <- fluidPage(
                               "Day"  = 6,
                               "Night" = 10),
                             selected = 6),
-               helpText("This helps calucate station placement and assumes less time is available for distribution during the day than at night.")
+               helpText("This helps calculate where bikes go and assumes less time available for distribution during the day than at night.")
                             )
         ),
        fluidRow(
@@ -69,8 +69,8 @@ ui <- fluidPage(
       ),
 
 
-p("This tool is designed to create a bike distribution plan for field operations to bring new bikes into the CitiBike system. It's indended to reintroduce fixed bikes, replace worn-out bicycles, or expanding the total number of available steeds." ),
-p("Plans are created by first identifying the most popular stations using historical data (currently, April 2018), then assigning new bikes based on three elements: 1) total incoming bikes, 2) total stations, and 3) each station's relative popularity. The tool takes the most popular stations and assigns bikes based on their relative popularity. The assignment accounts for morning or evening activity as bike share users tend differently depending on the time of day. Total available docks are included in the table to improve the planning process. Hope you enjoy!"),
+p("This tool is designed to create a bike distribution plan for field operations to,  a) reintroduce fixed bikes, b) replace missing/worn-out bicycles, or c) expanding the total number of available steeds." ),
+p("Plans are created by, first identifying the most popular stations using historical data (weekday, April 2018), then assigning new bikes based on three elements: 1) total incoming bikes, 2) total stations, and 3) each station's relative popularity. The tool takes the most popular stations and assigns bikes based on their relative popularity. The assignment accounts for morning or evening activity as bike share users tend to act differently depending on the time of day. Total available docks are included in the table to improve the distribution planning. Hope you enjoy!"),
 
 
 
@@ -294,7 +294,3 @@ server <- function(input, output) {
     
 # Run the app ----
 shinyApp(ui = ui, server = server)
-
-
-
-
