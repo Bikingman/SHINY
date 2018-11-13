@@ -1,9 +1,10 @@
 library(shiny)
 library(leaflet)
 library(sp)
-library(tmap)
-library(data.table)
-tmap_mode("view")
+library(RCurl)
+library(rsconnect)
+library(plyr)
+library(jsonlite)
 
 # Define UI ----
 ui <- fluidPage(
@@ -41,7 +42,7 @@ ui <- fluidPage(
                               "Day"  = 6,
                               "Night" = 10),
                             selected = 6),
-               helpText("This will determine how much time there is to deliver the bikes.")
+               helpText("This helps calucate station placement and assumes less time is available for distribution during the day than at night.")
                             )
         ),
        fluidRow(
@@ -54,11 +55,11 @@ ui <- fluidPage(
       fluidRow(
         column(12,
                numericInput("vans", 
-                            h4("How many van will be available to distribute new bikes?"), 
-                            value = 4),
-               helpText("Please only include vans that will be available for distributing", em("new"), "bikes during the shift.")
+                            h4("How many vans will be available to distribute new bikes?"), 
+                            value = 4)
         )
       ),
+
       fluidRow(
         column(12,
                numericInput("stations", 
@@ -66,11 +67,17 @@ ui <- fluidPage(
                             value = 40)
         )
       ),
+
+
+p("This tool is designed to create a bike distribution plan for field operations to bring new bikes into the CitiBike system. It's indended to reintroduce fixed bikes, replace worn-out bicycles, or expanding the total number of available steeds." ),
+p("Plans are created by first identifying the most popular stations using historical data (currently, April 2018), then assigning new bikes based on three elements: 1) total incoming bikes, 2) total stations, and 3) each station's relative popularity. The tool takes the most popular stations and assigns bikes based on their relative popularity. The assignment accounts for morning or evening activity as bike share users tend differently depending on the time of day. Total available docks are included in the table to improve the planning process. Hope you enjoy!"),
+
+
+
+
         fluidRow(
           column(12,
-                 img(src = "bike_wheel.png", height = 50 width = 50 position = "bottom"),
-                 p("This tool was developed by Daniel Patterson, more of his work can be found on", a(href = "http://www.urbandatacyclist.com", "his webpage."),
-                   p("Thanks for checking in!")
+                 helpText("Developed by Dan Patterson, more of his work can be found on", a(href = "http://www.urbandatacyclist.com", "his webpage.")
                  )
           )
         )
@@ -83,7 +90,6 @@ ui <- fluidPage(
       br(),
       textOutput("Statement2"),
       br(),
-      br(),
       fluidRow(
         column(12,
                leafletOutput("map"
@@ -91,13 +97,15 @@ ui <- fluidPage(
         )
       ),
       br(),
-      br(),
-      p("This map will help planning the expansion. You can see on the map how many bikes are assigned to each station."),
-      br(),
-      fluidRow(
-        column(12, downloadButton("downloadDataFromTable", "Download Table Data"))
-      ),
-      
+      p("This plan includes the most popular stations and calculates how many bikes should be added given the information you provided on the left."),
+
+ #     fluidRow(
+  #      column(12, 
+  #             downloadButton("downloadDataFromTable", 
+ #                             "Download Bike Expansion List", 
+  #                            style="display: block; margin: 0 auto; width: 230px;color: black;"))
+#      ),
+  
       fluidRow(
         column(12,
                dataTableOutput("table"
@@ -106,11 +114,9 @@ ui <- fluidPage(
       ),
       
       br(),
-      br(),
-      p("This list includes the most popular stations and calculates how many bikes should be added to each station given thier relative popularity in the past month."),
-      br(),
-      p("If during the expansion there arn't enough spaces for additional bikes, continue with the expansion and dispurse the bikes as you would if they were part of the daily grind.",
-        em("Keep up the good work!")
+p("If during the expansion there aren't enough spaces for additional bikes, continue with the expansion and disperse the bikes as you would if they were part of the daily grind.",
+  em("Keep up the good work!")
+
         )
   )
 )
@@ -131,56 +137,66 @@ server <- function(input, output) {
     E <- ceiling(A/B)
     F <- ceiling(E/C)
     G <- ceiling(D/B)
-    paste("During this shift, each van will be expected to reach approximatily,", F,"stations and deliver", G, "bikes per hour. Is this managable?")
+    paste("During this shift, each van will be expected to reach approximately,", F,"stations and deliver", G, "bikes per hour. Is this managable?")
   })
-  
-  
-  
-  output$Statement2 <- renderText({
-    paste("This tool is designed to create a new bike distribution plan into an alraedy establihsed bike share system. The most popular stations are identified and new bikes are assigned based on each station's realtive popularity. In other words, the most popular station is assigned the most bikes, fewer bikes to the second most popular station, and so on. The assignment acocunts for morning or evening popularity as bike share users tent to have differences in usage patters in the morning and evening.")
-  })
-  
-
   
   output$table <- renderDataTable({
   
     if ( (input$radio==6)
     ) {
          #morning data
-         morning_hires <- read.csv("MH.csv", sep=',', header=T)
+         h <- getURL("https://raw.githubusercontent.com/Bikingman/SHINY/master/bikeshare/expansion_tool/data/MH.csv")
+         morning_hires <- read.csv(text = h)
+         dd <- getURL("https://raw.githubusercontent.com/Bikingman/SHINY/master/bikeshare/expansion_tool/data/data.csv")
+         data <- read.csv(text = dd)
+         json <- getURL("https://gbfs.citibikenyc.com/gbfs/fr/station_status.json")
+         j <- fromJSON(json, flatten = T)
+         jj <- ldply(j, data.frame)
+         
+
          #get unique id names to merge with morning hires
-         ids <- unique(subset(data, select = c(start.station.id, start.station.name)))
-         morning_hires2 <- merge(morning_hires, ids, by = "start.station.id", all.x = T, all.y = F)
+         morning_hires2 <- merge(morning_hires, data, by = "start.station.id", all.x = T, all.y = F)
+         morning_hires2 <- merge(morning_hires2, jj, by.x = "start.station.id", by.y = "stations.station_id", all.x = T, all.y = F)
          morning_hires2 <- morning_hires2[order(-morning_hires2$hire),] 
          distribution_list <- morning_hires2[1:input$stations,]
          distribution_list$perc <- distribution_list$hire/sum(distribution_list$hire)
          distribution_list$bike_count <- round(distribution_list$perc*input$addbikes,0)
          distribution_list <- subset(distribution_list, bike_count > 0)
          distribution_list <- distribution_list[order(-distribution_list$bike_count),] 
-         final_list <- subset(distribution_list, select = c("start.station.name", "bike_count"))
-         
+         final_list <- subset(distribution_list, select = c("start.station.name", "bike_count", "stations.num_docks_available"))
+         colnames(final_list) <- c("Station Name", "New Bikes", "Available Docks")
          final_list
          
          
     } else {
       #evening data
-      evening_hires <- read.csv("EH.csv", sep=',', header=T)
-      ids <- unique(subset(data, select = c(start.station.id, start.station.name)))
-      evening_hires2 <- merge(evening_hires, ids, by = "start.station.id", all.x = T, all.y = F)
+      EH <- getURL("https://raw.githubusercontent.com/Bikingman/SHINY/master/bikeshare/expansion_tool/data/EH.csv")
+      evening_hires <- read.csv(text = EH)
+      dd <- getURL("https://raw.githubusercontent.com/Bikingman/SHINY/master/bikeshare/expansion_tool/data/data.csv")
+      data <- read.csv(text = dd)
+      json <- getURL("https://gbfs.citibikenyc.com/gbfs/fr/station_status.json")
+      j <- fromJSON(json, flatten = T)
+      jj <- ldply(j, data.frame)
+      
+      evening_hires2 <- merge(evening_hires, data, by = "start.station.id", all.x = T, all.y = F)
+      evening_hires2 <- merge(evening_hires2, jj, by.x = "start.station.id", by.y = "stations.station_id", all.x = T, all.y = F)
+      
       evening_hires2 <- evening_hires2[order(-evening_hires2$hire),] 
       evening_distribution_list <- evening_hires2[1:input$stations,]
       evening_distribution_list$perc <- evening_distribution_list$hire/sum(evening_distribution_list$hire)
       evening_distribution_list$bike_count <- round(evening_distribution_list$perc*input$addbikes,0)
       evening_distribution_list <- subset(evening_distribution_list, bike_count > 0)
       evening_distribution_list <- evening_distribution_list[order(-evening_distribution_list$bike_count),] 
-      final_evening_list <- subset(evening_distribution_list, select = c("start.station.name", "bike_count"))
+      final_evening_list <- subset(evening_distribution_list, select = c("start.station.name", "bike_count", "stations.num_docks_available"))
+      colnames(final_evening_list) <- c("Station Name", "New Bikes", "Available Docks")
       
-      final_evening_list
-   
-  }
-    }
-  )
 
+       final_evening_list 
+   
+    }
+  }
+  )
+  
   
   
   output$map <- renderLeaflet({
@@ -188,10 +204,15 @@ server <- function(input, output) {
     if ( (input$radio==6)
     ) {
       #morning data
-      morning_hires <- read.csv("MH.csv", sep=',', header=T)
+      h <- getURL("https://raw.githubusercontent.com/Bikingman/SHINY/master/bikeshare/expansion_tool/data/MH.csv")
+      morning_hires <- read.csv(text = h)
+      dd <- getURL("https://raw.githubusercontent.com/Bikingman/SHINY/master/bikeshare/expansion_tool/data/data.csv")
+      data <- read.csv(text = dd)
+      json <- getURL("https://gbfs.citibikenyc.com/gbfs/fr/station_status.json")
+      j <- fromJSON(json, flatten = T)
+      jj <- ldply(j, data.frame)
       #get unique id names to merge with morning hires
-      ids <- unique(subset(data, select = c(start.station.id, start.station.name)))
-      morning_hires2 <- merge(morning_hires, ids, by = "start.station.id", all.x = T, all.y = F)
+      morning_hires2 <- merge(morning_hires, data, by = "start.station.id", all.x = T, all.y = F)
       morning_hires2 <- morning_hires2[order(-morning_hires2$hire),] 
       distribution_list <- morning_hires2[1:input$stations,]
       distribution_list$perc <- distribution_list$hire/sum(distribution_list$hire)
@@ -209,15 +230,27 @@ server <- function(input, output) {
                          options = providerTileOptions(noWrap = TRUE)
         ) %>%
         addCircleMarkers(data = distribution_spatial, 
-                         label = as.character(distribution_spatial$bike_count)
+                         radius = 4,
+                         fillOpacity = 1,
+                         color = "Green",
+                         label = paste("Station Name:", distribution_spatial$start.station.name,"&",
+                                       "Bikes:", distribution_spatial$bike_count)
+                                        
+
         )
       
       
     } else {
       #evening data
-      evening_hires <- read.csv("EH.csv", sep=',', header=T)
-      ids <- unique(subset(data, select = c(start.station.id, start.station.name)))
-      evening_hires2 <- merge(evening_hires, ids, by = "start.station.id", all.x = T, all.y = F)
+      dd <- getURL("https://raw.githubusercontent.com/Bikingman/SHINY/master/bikeshare/expansion_tool/data/data.csv")
+      data <- read.csv(text = dd)
+      EH <- getURL("https://raw.githubusercontent.com/Bikingman/SHINY/master/bikeshare/expansion_tool/data/EH.csv")
+      evening_hires <- read.csv(text = EH)
+      json <- getURL("https://gbfs.citibikenyc.com/gbfs/fr/station_status.json")
+      j <- fromJSON(json, flatten = T)
+      jj <- ldply(j, data.frame)
+      
+      evening_hires2 <- merge(evening_hires, data, by = "start.station.id", all.x = T, all.y = F)
       evening_hires2 <- evening_hires2[order(-evening_hires2$hire),] 
       evening_distribution_list <- evening_hires2[1:input$stations,]
       evening_distribution_list$perc <- evening_distribution_list$hire/sum(evening_distribution_list$hire)
@@ -230,19 +263,34 @@ server <- function(input, output) {
       evening_distribution_spatial <- SpatialPointsDataFrame(pts2, data = evening_distribution_list,
                                                      proj4string = CRS("+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0"))
       
+      pal <- colorFactor(
+        palette = 'Blues',
+        domain = evening_distribution_spatial$bike_count
+      )
+      
       leaflet() %>%
         addProviderTiles(providers$Stamen.TonerLite,
                          options = providerTileOptions(noWrap = TRUE)
         ) %>%
+        
         addCircleMarkers(data = evening_distribution_spatial, 
-                         label = as.character(evening_distribution_spatial$bike_count)
-                         )
+                         lng = as.numeric(evening_distribution_spatial$start.station.longitude), 
+                         lat = as.numeric(evening_distribution_spatial$start.station.latitude),
+                         radius = 4,
+                         fillOpacity = 1,
+                         color = "Blue",
+                         label = paste("Station Name:", evening_distribution_spatial$start.station.name,"&",
+                         "Bikes:", evening_distribution_spatial$bike_count)
+        )
+                  
     }
   }
   )
+  
+
 }
     
-    
+
     
 # Run the app ----
 shinyApp(ui = ui, server = server)
